@@ -1,0 +1,161 @@
+TRABALHO:
+
+pig -f felipe_seabra.pig;
+hdfs dfs -ls pig_output/felipe_seabra
+
+
+#1. Quantidade de usuários distintos que fizeram avaliação de filmes (DUMP)
+
+ratings = LOAD 'ratings.csv' USING PigStorage(',') as (userId:int,movieId:int,rating:double,timestamp:long);
+ratings_filter = FILTER ratings BY (userId>0);
+ratings_a = FOREACH ratings_filter GENERATE userId;
+ratings_b = DISTINCT ratings_a;
+ratings_c = GROUP ratings_b ALL;
+ratings_d = FOREACH ratings_c Generate COUNT(ratings_b);
+DUMP ratings_d;
+
+
+#2. Quantidade de avaliações por usuário (qtd_user_rating.txt)
+
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long); 
+ratings = FILTER ratings_header BY (userId!=0);
+ratings_group = Group ratings BY userId;
+ratings_count = FOREACH ratings_group GENERATE FLATTEN(group) as (userId), COUNT($1);
+STORE ratings_count INTO 'pig_output/felipeseabra/qtd_user_rating.txt' USING PigStorage(',');
+
+
+#3. O usuário e a data de sua última avaliação (user_max_rate_date.txt)
+   
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long);
+ratings = FILTER ratings_header BY (userId>0);
+ratings_time = FOREACH ratings GENERATE userId, ((long) timestamp*1000) as time;
+ratings_date = FOREACH ratings_time GENERATE userId,ToDate(time) as time;
+ratings_group = GROUP ratings_date BY userId;
+ratings_max = FOREACH ratings_group GENERATE  group, MAX(ratings_date.time);
+STORE ratings_max INTO 'pig_output/felipeseabra/user_max_rate_date.txt' USING PigStorage(',');
+
+
+#4. Quantidade de filmes por gênero (qtd_movie_by_gender.txt)
+
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_tokenize = FOREACH movies_filter GENERATE TOKENIZE(REPLACE(genres, '\\|',' '));
+movies_flat = FOREACH movies_tokenize GENERATE FLATTEN($0) as genres;
+movies_group = GROUP movies_flat BY genres;
+movies_count = FOREACH movies_group Generate FLATTEN(group) as (genero), COUNT(movies_flat.genres) as contador;
+movies_filter = FILTER movies_count By contador > 1;
+STORE movies_filter INTO 'pig_output/felipeseabra/qtd_movie_by_gender.txt' USING PigStorage(',');
+
+
+#5. Lista distinta dos gêneros dos filmes (DUMP)
+   
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_tokenize = FOREACH movies_filter GENERATE TOKENIZE(REPLACE(genres, '\\|',' ')) as genres;
+movies_genre = FOREACH movies_tokenize GENERATE FLATTEN(genres);
+movies_distict = DISTINCT movies_genre;
+DUMP movies_distict;
+
+
+#6. Quantidade de filmes pelas 10 maiores tags (qtd_movie_by_tag.txt)
+
+tags = LOAD 'tags.csv' USING PigStorage(',') as (userId:int,movieId:int,tag:chararray,timestamp:long);
+tags_filter = FILTER tags BY (userId>0);
+tags_t = foreach tags_filter generate tag, movieId;
+tags_distinct = DISTINCT tags_t;
+tags_tag = foreach tags_distinct GENERATE tag;
+tags_group = GROUP tags_tag BY tag;
+tags_count = foreach tags_group GENERATE FLATTEN(group) as (tags), COUNT(tags_tag.tag) as contador;
+tags_order = ORDER tags_count BY contador DESC;
+tags_limit = LIMIT tags_order 10;
+STORE tags_limit INTO 'pig_output/felipeseabra/qtd_movie_by_tag.txt' USING PigStorage(',');
+
+
+
+#7. Lista de nomes dos 10 filmes mais bem avaliados, quantidade de avaliações e sua nota média (top_10_movie.txt)
+
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long);
+ratings = FILTER ratings_header BY (userId>0);
+ratings_mr = FOREACH ratings GENERATE movieId, rating;
+ratings_group = GROUP ratings_mr BY movieId;
+ratings_resultado = FOREACH ratings_group GENERATE(group), COUNT(ratings_mr.rating) as contador,SUM(ratings_mr.rating)/COUNT(ratings_mr.rating) as media; 
+ratings_order = ORDER ratings_resultado BY media DESC;
+ratings_limit = LIMIT ratings_order 10;
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_name = FOREACH movies_filter GENERATE movieId , title;
+ratings_join_movies = JOIN movies_filter BY movieId, ratings_limit BY group;
+ratings_final = FOREACH ratings_join_movies GENERATE title, contador, media;
+STORE ratings_final INTO 'pig_output/felipeseabra/top_10_movie.txt' USING PigStorage(',');
+
+
+
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long);
+ratings = FILTER ratings_header BY (userId>0);
+ratings_mr = FOREACH ratings GENERATE movieId, rating;
+ratings_group = GROUP ratings_mr BY movieId;
+ratings_resultado = FOREACH ratings_group GENERATE(group), COUNT(ratings_mr.rating) as contador,SUM(ratings_mr.rating)/COUNT(ratings_mr.rating) as media; 
+ratings_order = ORDER ratings_resultado BY media DESC;
+ratings_limit = LIMIT ratings_order 10;
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_name = FOREACH movies_filter GENERATE movieId , title;
+ratings_join_movies = JOIN movies_name BY movieId, ratings_limit BY group;
+ratings_final = FOREACH ratings_join_movies GENERATE title, contador, media;
+STORE ratings_final INTO 'pig_output/felipeseabra/top_10_movie.txt' USING PigStorage(',');
+
+
+
+#8. Lista dos filmes e a quantidade de gêneros de cada um, ordenando descrescente pela quantidade  (qtd_movie_gender.txt)
+
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_tokenize = FOREACH movies_filter GENERATE movieId,TOKENIZE(REPLACE(genres, '\\|',' ')) as genres;
+movies_count = FOREACH movies_tokenize GENERATE movieId, COUNT(genres) as contador;
+movies_order = ORDER movies_count BY contador DESC;
+STORE movies_order INTO 'pig_output/felipeseabra/qtd_movie_gender.txt' USING PigStorage(',');
+
+
+
+#9. Lista de nomes dos 10 piores filmes, a quantidade distinta de usuários que avaliaram e sua nota média (bottom_10_movie.txt)
+
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long);
+ratings = FILTER ratings_header BY (userId>0);
+ratings_a = FOREACH ratings GENERATE userId, movieId, rating;
+ratings_group = GROUP ratings_a BY movieId;
+ratings_b = FOREACH ratings_group GENERATE group, COUNT(ratings_a.userId) as contador, SUM(ratings_a.rating)/COUNT(ratings_a.rating) as media;
+ratings_order = ORDER ratings_b BY media ASC;
+ratings_limit = LIMIT ratings_order 10;
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray);
+movies_filter = FILTER movies_header BY (movieId>0);
+movies_mo_ti = FOREACH movies_filter GENERATE movieId, title;
+ratings_join = JOIN ratings_limit BY group, movies_mo_ti BY movieId;
+ratings_final = FOREACH ratings_join GENERATE title, contador, media;
+STORE ratings_final INTO 'pig_output/felipeseabra/bottom_10_movie.txt' USING PigStorage(',');
+
+
+
+#10. Ranking dos 10 gêneros mais bem avaliados, com quantidade de avaliações e nota média (rank_rating.txt)
+
+ratings_header = LOAD 'ratings.csv' USING PigStorage(',') AS (userId:int,movieId:int, rating:double, timestamp:long);
+ratings = FILTER ratings_header BY (userId>0);
+ratings_new = FOREACH ratings GENERATE movieId,rating;
+DEFINE CSVExcelStorage org.apache.pig.piggybank.storage.CSVExcelStorage(',', 'NO_MULTILINE', 'UNIX', 'SKIP_INPUT_HEADER');
+movies_header = LOAD 'movies.csv' USING CSVExcelStorage() AS (movieId:int,title:chararray,genres:chararray); 
+movies = FILTER movies_header BY (movieId>0);
+movies_genres = FOREACH movies Generate movieId,genres;
+movies_split = FOREACH movies_genres GENERATE movieId,STRSPLITTOBAG(genres,'\\|') as genres;
+movies_flat = FOREACH movies_split GENERATE movieId,FLATTEN(genres) as genres;
+ratings_join = JOIN ratings_new BY movieId, movies_flat BY movieId;
+ratings_group = Group ratings_join BY movies_flat::genres;
+ratings_avg = FOREACH ratings_group GENERATE group as genres, AVG(ratings_join.ratings_new::rating) as avg,COUNT(ratings_join.ratings_new::rating) as ratins_qtd;
+join_order = ORDER ratings_avg BY avg DESC;
+join_limit = Limit join_order 10; 
+STORE join_limit INTO 'pig_output/felipe_seabra/rank_rating.txt' USING PigStorage(',');
+
